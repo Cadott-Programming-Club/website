@@ -1,0 +1,314 @@
+package pages
+
+import (
+	"website/components/badge"
+	"website/components/button"
+	"website/components/card"
+	"website/components/icon"
+	"website/layouts"
+)
+
+templ sectionTitle(text string) {
+	<h2 class="mb-5 font-display text-2xl text-primary sm:text-3xl">{ text }</h2>
+}
+
+templ pageTitle(title, lead string) {
+	<div class="mb-8">
+		<h1 class="font-display text-4xl text-primary sm:text-5xl">{ title }</h1>
+		if lead != "" {
+			<p class="mt-3 max-w-2xl text-lg text-muted-foreground">{ lead }</p>
+		}
+	</div>
+}
+
+templ infoCard(ic templ.Component, title, body string) {
+	@card.Card() {
+		@card.Header() {
+			<div class="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+				@ic
+			</div>
+			@card.Title() {
+				{ title }
+			}
+			@card.Description() {
+				{ body }
+			}
+		}
+	}
+}
+
+templ Home(fb string) {
+	@layouts.Base(layouts.Nav{Title: "Cadott Programming Club", Description: "Cadott students in grades 6 to 12 building games and apps with AI.", Facebook: fb}) {
+		<section class="relative overflow-hidden border-b">
+			<div class="pointer-events-none absolute inset-0 bg-[radial-gradient(50rem_30rem_at_80%_20%,color-mix(in_oklch,var(--primary)_14%,transparent),transparent)]"></div>
+			<div class="relative mx-auto grid max-w-6xl items-center gap-10 px-4 py-14 md:grid-cols-[1.2fr_1fr] md:py-20">
+				<div>
+					@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+						Grades 6 to 12 &middot; Cadott, WI
+					}
+					<h1 class="mt-4 font-display text-5xl leading-[1.05] text-primary sm:text-6xl">Cadott Programming Club</h1>
+					<p class="mt-5 max-w-xl text-xl text-muted-foreground">Students learning how AI works by building real games and apps with it.</p>
+					<div class="mt-8 flex flex-wrap gap-3">
+						@button.Button(button.Props{Size: button.SizeLg, Href: "/students/"}) {
+							Students start here
+							@icon.ArrowRight(icon.Props{Size: 16})
+						}
+						@button.Button(button.Props{Size: button.SizeLg, Variant: button.VariantOutline, Href: fb, Target: "_blank"}) {
+							Follow on Facebook
+						}
+					</div>
+				</div>
+				<img src="/assets/hornet.jpg" alt="Cadott hornet mascot on a circuit board background" class="mx-auto w-full max-w-sm rounded-2xl shadow-[0_0_60px_color-mix(in_oklch,var(--primary)_25%,transparent)]"/>
+			</div>
+		</section>
+		<div class="mx-auto max-w-6xl space-y-16 px-4 py-14">
+			<section>
+				@sectionTitle("What we do")
+				<div class="grid gap-4 md:grid-cols-3">
+					@infoCard(icon.Gamepad2(icon.Props{Size: 20}), "Make games", "Students build their own games in Godot, a free engine that runs on our Linux laptops and publishes to the web.")
+					@infoCard(icon.Brain(icon.Props{Size: 20}), "Learn how AI works", "Short lessons on models, prompting, training and game AI, then hands-on time with AI coding tools.")
+					@infoCard(icon.Store(icon.Props{Size: 20}), "Build for real people", "Older students build websites and apps for local businesses and organizations.")
+				</div>
+			</section>
+			<section>
+				@sectionTitle("When we meet")
+				@card.Card() {
+					@card.Content(card.ContentProps{Class: "flex items-start gap-4"}) {
+						<div class="text-primary">
+							@icon.Calendar(icon.Props{Size: 22})
+						</div>
+						<p>Tuesdays 3:00 to 5:30 and Thursdays 3:30 to 5:30 at the school during the fall session. Winter times are coming in January.</p>
+					}
+				}
+			</section>
+			<section class="grid items-center gap-10 md:grid-cols-2">
+				<div>
+					@sectionTitle("Help our students build")
+					<div class="space-y-4 text-muted-foreground">
+						<p>Our students are learning to build real things with the same AI tools companies are starting to use right now. Last year they built free websites for local businesses and organizations:</p>
+						<ul class="space-y-2 text-foreground">
+							<li><a class="text-primary hover:underline" href="https://www.cadottcommunity.com" target="_blank">Cadott Community Association</a>, built by Carter Matherne</li>
+							<li><a class="text-primary hover:underline" href="https://kyesguyspizza.com" target="_blank">Kyes Guys Pizza</a>, built by Logan LaNou</li>
+						</ul>
+						<p>Most of our students only have school Chromebooks, which are locked down and can't run the tools we use. The AI tools that let them really build things also cost money every month.</p>
+					</div>
+				</div>
+				<img src="/assets/help-build.jpg" alt="Hornet mascot on a stack of laptops, Help our students build" class="w-full rounded-2xl"/>
+			</section>
+			<section>
+				@sectionTitle("How you can help")
+				<div class="grid gap-4 md:grid-cols-3">
+					@infoCard(icon.Wrench(icon.Props{Size: 20}), "Have a project?", "Ask us about having our students build it in exchange for a donation to the club.")
+					@infoCard(icon.Laptop(icon.Props{Size: 20}), "Got an old laptop?", "We need 5 to 10 to start. It doesn't have to be new, as long as it still runs and comes with a charger.")
+					@infoCard(icon.HandHeart(icon.Props{Size: 20}), "Donate money", "It helps cover laptops and AI subscriptions for our students.")
+				</div>
+			</section>
+			<section class="grid gap-6 md:grid-cols-2">
+				@card.Card() {
+					@card.Header() {
+						@card.Title() {
+							Laptops that work best
+						}
+					}
+					@card.Content() {
+						<ul class="space-y-2">
+							@check("2016 or newer")
+							@check("Intel Core i5 or i7 (6th gen or newer) or AMD Ryzen")
+							@check("8GB of memory or more (16GB is even better)")
+							@check("SSD, 128GB or bigger")
+							@check("Working charger")
+							@check("Battery holds a charge, and the screen and keyboard work")
+							<li class="flex gap-2">
+								<span class="text-destructive">
+									@icon.X(icon.Props{Size: 18})
+								</span>
+								No Chromebooks, please
+							</li>
+						</ul>
+					}
+				}
+				@card.Card() {
+					@card.Header() {
+						@card.Title() {
+							Get in touch
+						}
+						@card.Description() {
+							We wipe every drive before a student uses the laptop, so your data won't be on it.
+						}
+					}
+					@card.Content(card.ContentProps{Class: "space-y-4"}) {
+						<p>Reach out to Cory LaNou, or send us a message on Facebook.</p>
+						<div class="flex flex-wrap gap-3">
+							@button.Button(button.Props{Href: "mailto:lanouc@cadott.k12.wi.us"}) {
+								@icon.Mail(icon.Props{Size: 16})
+								lanouc@cadott.k12.wi.us
+							}
+							@button.Button(button.Props{Variant: button.VariantOutline, Href: fb, Target: "_blank"}) {
+								Message us on Facebook
+							}
+						</div>
+						<p class="text-muted-foreground">A laptop someone would otherwise recycle can be what gets a kid started on a career.</p>
+					}
+				}
+			</section>
+		</div>
+	}
+}
+
+templ check(text string) {
+	<li class="flex gap-2">
+		<span class="text-primary">
+			@icon.Check(icon.Props{Size: 18})
+		</span>
+		{ text }
+	</li>
+}
+
+templ code(lines string) {
+	<pre class="overflow-x-auto rounded-lg border bg-muted/50 p-4 font-mono text-sm whitespace-pre-wrap">{ lines }</pre>
+}
+
+templ Students(fb string) {
+	@layouts.Base(layouts.Nav{Title: "Students - Cadott Programming Club", Facebook: fb}) {
+		<div class="mx-auto max-w-6xl space-y-12 px-4 py-12">
+			@pageTitle("Students", "Everything you need for club, in one place.")
+			<section class="grid gap-4 md:grid-cols-2">
+				@card.Card() {
+					@card.Header() {
+						@card.Title() {
+							1. Get the starter and install Godot
+						}
+					}
+					@card.Content() {
+						@code("git clone https://github.com/Cadott-Programming-Club/godot-game-starter.git my-game\ncd my-game\n./install-godot.sh")
+					}
+				}
+				@card.Card() {
+					@card.Header() {
+						@card.Title() {
+							2. Start the AI helper and open your game
+						}
+					}
+					@card.Content() {
+						@code("opencode\ngodot -e --path .")
+					}
+				}
+			</section>
+			<section>
+				@sectionTitle("Links")
+				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+					@linkCard("/2026-27/", "This year's lessons", "Slides for every Tuesday lesson.", false)
+					@linkCard("/games/", "Club games", "Play games built by the club in your browser.", false)
+					@linkCard("https://github.com/Cadott-Programming-Club/godot-game-starter", "Game starter", "The empty Godot project every game begins from.", true)
+					@linkCard("https://docs.godotengine.org/en/stable/", "Godot docs", "How every part of the engine works.", true)
+					@linkCard("https://opencode.ai/docs/", "OpenCode docs", "The AI coding tool we use in the terminal.", true)
+				</div>
+			</section>
+		</div>
+	}
+}
+
+templ linkCard(href, title, body string, external bool) {
+	<a href={ templ.SafeURL(href) } if external { target="_blank" } class="group block">
+		@card.Card(card.Props{Class: "h-full transition-colors group-hover:ring-primary/60"}) {
+			@card.Header() {
+				@card.Title(card.TitleProps{Class: "flex items-center gap-2 group-hover:text-primary"}) {
+					{ title }
+					if external {
+						@icon.ExternalLink(icon.Props{Size: 14})
+					}
+				}
+				@card.Description() {
+					{ body }
+				}
+			}
+		}
+	</a>
+}
+
+templ Lessons(fb string, ls []Lesson) {
+	@layouts.Base(layouts.Nav{Title: "2026-27 Lessons - Cadott Programming Club", Facebook: fb}) {
+		<div class="mx-auto max-w-6xl px-4 py-12">
+			@pageTitle("2026-27 Lessons", "Pick a lesson. Use the arrow keys to move through the slides.")
+			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+				for _, l := range ls {
+					<a href={ templ.SafeURL(l.URL()) } class="group block">
+						@card.Card(card.Props{Class: "h-full transition-colors group-hover:ring-primary/60"}) {
+							@card.Header() {
+								<div class="mb-1 flex items-center gap-2">
+									@badge.Badge(badge.Props{Variant: badge.VariantSecondary}) {
+										{ l.Label() }
+									}
+									<span class="font-mono text-xs text-muted-foreground">{ l.When }</span>
+								</div>
+								@card.Title(card.TitleProps{Class: "group-hover:text-primary"}) {
+									{ l.Title }
+								}
+							}
+						}
+					</a>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ LessonPage(fb string, l Lesson, prev, next *Lesson) {
+	@layouts.Frame(layouts.Nav{Title: l.Label() + ": " + l.Title, Facebook: fb}, lessonBar(l, prev, next), l.SlidesURL())
+}
+
+func lessonBar(l Lesson, prev, next *Lesson) layouts.FrameBar {
+	b := layouts.FrameBar{Crumb: "2026-27 Lessons", CrumbHref: "/2026-27/", Label: l.Label() + " · " + l.When, FullHref: l.SlidesURL(), Hint: "arrow keys change slides"}
+	if prev != nil {
+		b.PrevHref, b.PrevLabel = prev.URL(), prev.Label()
+	}
+	if next != nil {
+		b.NextHref, b.NextLabel = next.URL(), next.Label()
+	}
+	return b
+}
+
+templ Games(fb string, gs []Game) {
+	@layouts.Base(layouts.Nav{Title: "Club Games - Cadott Programming Club", Facebook: fb}) {
+		<div class="mx-auto max-w-6xl px-4 py-12">
+			@pageTitle("Club Games", "These play in your browser. The first load takes a few seconds.")
+			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+				for _, g := range gs {
+					<a href={ templ.SafeURL(g.URL()) } class="group block">
+						@card.Card(card.Props{Class: "h-full transition-colors group-hover:ring-primary/60"}) {
+							@card.Header() {
+								<div class="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+									@icon.Gamepad2(icon.Props{Size: 20})
+								</div>
+								@card.Title(card.TitleProps{Class: "group-hover:text-primary"}) {
+									{ g.Title }
+								}
+								@card.Description() {
+									{ g.Description }
+								}
+							}
+						}
+					</a>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ GamePage(fb string, g Game) {
+	@layouts.Frame(layouts.Nav{Title: g.Title + " - Cadott Programming Club", Facebook: fb}, layouts.FrameBar{Crumb: "Club Games", CrumbHref: "/games/", Label: g.Title, FullHref: g.PlayURL(), Hint: "click the game first"}, g.PlayURL())
+}
+
+templ NotFound(fb string) {
+	@layouts.Base(layouts.Nav{Title: "Not found - Cadott Programming Club", Facebook: fb}) {
+		<div class="mx-auto max-w-6xl px-4 py-24 text-center">
+			<h1 class="font-display text-5xl text-primary">Page not found</h1>
+			<p class="mt-4 text-muted-foreground">That page doesn't exist.</p>
+			<div class="mt-8">
+				@button.Button(button.Props{Href: "/"}) {
+					Go home
+				}
+			</div>
+		</div>
+	}
+}

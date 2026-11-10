@@ -1,0 +1,140 @@
+package layouts
+
+import (
+	"website/components"
+	"website/components/button"
+	"website/components/icon"
+	"website/components/separator"
+)
+
+type Nav struct {
+	Title       string
+	Description string
+	Facebook    string
+	Frame       bool
+}
+
+templ head(n Nav) {
+	<meta charset="UTF-8"/>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	<title>{ n.Title }</title>
+	if n.Description != "" {
+		<meta name="description" content={ n.Description }/>
+	}
+	<link rel="icon" href="/assets/favicon.png"/>
+	<meta name="theme-color" content="#16150f"/>
+	<link rel="preconnect" href="https://fonts.googleapis.com"/>
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Graduate&family=JetBrains+Mono&display=swap"/>
+	<link rel="stylesheet" href="/assets/css/output.css"/>
+	@components.Scripts()
+}
+
+templ header(n Nav) {
+	<header class="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
+		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+			<a href="/" class="mr-auto flex items-center gap-3">
+				<img src="/assets/favicon.png" alt="" class="size-9 rounded-md"/>
+				<span class="text-lg font-bold tracking-tight text-primary">Cadott Programming Club</span>
+			</a>
+			<nav class="-mx-2 flex flex-wrap items-center">
+				@navLink("/students/", "Students")
+				@navLink("/2026-27/", "Lessons")
+				@navLink("/games/", "Games")
+				@button.Button(button.Props{Variant: button.VariantGhost, Href: n.Facebook, Target: "_blank", Class: "text-[15px]"}) {
+					@icon.ExternalLink(icon.Props{Size: 14})
+					Facebook
+				}
+			</nav>
+		</div>
+	</header>
+}
+
+templ navLink(href, label string) {
+	@button.Button(button.Props{Variant: button.VariantGhost, Href: href, Class: "text-[15px]"}) {
+		{ label }
+	}
+}
+
+templ footer(n Nav) {
+	<footer class="border-t">
+		<div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center">
+			<div class="flex items-center gap-3 sm:mr-auto">
+				<img src="/assets/favicon.png" alt="" class="size-7 rounded"/>
+				<span>Cadott Programming Club &middot; Cadott, Wisconsin</span>
+			</div>
+			<nav class="flex flex-wrap gap-x-5 gap-y-2">
+				<a class="hover:text-foreground" href="/students/">Students</a>
+				<a class="hover:text-foreground" href="/2026-27/">Lessons</a>
+				<a class="hover:text-foreground" href="/games/">Games</a>
+				<a class="hover:text-foreground" href={ templ.SafeURL(n.Facebook) } target="_blank">Facebook</a>
+			</nav>
+		</div>
+	</footer>
+}
+
+templ Base(n Nav) {
+	<!DOCTYPE html>
+	<html lang="en" class="dark h-full">
+		<head>
+			@head(n)
+		</head>
+		<body class="flex min-h-full flex-col bg-background font-sans text-foreground antialiased">
+			@header(n)
+			<main class="flex-1">
+				{ children... }
+			</main>
+			@footer(n)
+		</body>
+	</html>
+}
+
+type FrameBar struct {
+	Crumb     string
+	CrumbHref string
+	Label     string
+	PrevHref  string
+	PrevLabel string
+	NextHref  string
+	NextLabel string
+	FullHref  string
+	Hint      string
+}
+
+templ Frame(n Nav, bar FrameBar, src string) {
+	<!DOCTYPE html>
+	<html lang="en" class="dark h-full">
+		<head>
+			@head(n)
+		</head>
+		<body class="flex h-svh flex-col overflow-hidden bg-background font-sans text-foreground antialiased">
+			@header(n)
+			<iframe src={ src } title={ n.Title } allow="fullscreen; autoplay" allowfullscreen class="w-full flex-1 border-0 bg-black" onload="this.focus()"></iframe>
+			@separator.Separator()
+			<div class="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1.5 text-sm">
+				<a href={ templ.SafeURL(bar.CrumbHref) } class="text-primary hover:underline">{ bar.Crumb }</a>
+				<span class="text-muted-foreground">/</span>
+				<span>{ bar.Label }</span>
+				if bar.Hint != "" {
+					<span class="hidden text-muted-foreground md:inline">&middot; { bar.Hint }</span>
+				}
+				<span class="flex-1"></span>
+				if bar.PrevHref != "" {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: bar.PrevHref}) {
+						@icon.ArrowLeft(icon.Props{Size: 14})
+						{ bar.PrevLabel }
+					}
+				}
+				if bar.NextHref != "" {
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: bar.NextHref}) {
+						{ bar.NextLabel }
+						@icon.ArrowRight(icon.Props{Size: 14})
+					}
+				}
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: bar.FullHref, Target: "_blank"}) {
+					@icon.Maximize(icon.Props{Size: 14})
+					Full screen
+				}
+			</div>
+		</body>
+	</html>
+}
