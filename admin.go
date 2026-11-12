@@ -58,12 +58,34 @@ func (ad *admin) fail(w http.ResponseWriter, err error) {
 	http.Error(w, "something went wrong: "+err.Error(), http.StatusInternalServerError)
 }
 
-func (ad *admin) dashboard(ctx context.Context) (pages.Dashboard, error) {
-	ms, err := ad.store.Meetings(ctx)
+func (ad *admin) currentYear() int { return store.YearOf(time.Now().In(ad.loc)) }
+
+// yearNav reads ?year= (a start year or "all") and defaults to the
+// current school year. Selected is 0 for all years.
+func (ad *admin) yearNav(r *http.Request, base string) (pages.YearNav, error) {
+	years, err := ad.store.Years(r.Context())
+	if err != nil {
+		return pages.YearNav{}, err
+	}
+	nav := pages.YearNav{Years: years, Selected: ad.currentYear(), Current: ad.currentYear(), Base: base}
+	switch v := r.FormValue("year"); v {
+	case "":
+	case "all":
+		nav.Selected = 0
+	default:
+		if y, err := strconv.Atoi(v); err == nil {
+			nav.Selected = y
+		}
+	}
+	return nav, nil
+}
+
+func (ad *admin) dashboard(ctx context.Context, year int) (pages.Dashboard, error) {
+	ms, err := ad.store.Meetings(ctx, year)
 	if err != nil {
 		return pages.Dashboard{}, err
 	}
-	sts, err := ad.store.Students(ctx, true)
+	sts, err := ad.store.Students(ctx, year)
 	if err != nil {
 		return pages.Dashboard{}, err
 	}
@@ -75,26 +97,36 @@ func (ad *admin) dashboard(ctx context.Context) (pages.Dashboard, error) {
 }
 
 func (ad *admin) leaderboard(w http.ResponseWriter, r *http.Request) {
-	d, err := ad.dashboard(r.Context())
+	nav, err := ad.yearNav(r, "/admin/leaderboard")
 	if err != nil {
 		ad.fail(w, err)
 		return
 	}
-	render(w, r, pages.Leaderboard(ad.name(r.Context()), d))
+	d, err := ad.dashboard(r.Context(), nav.Selected)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
+	render(w, r, pages.Leaderboard(ad.name(r.Context()), d, nav))
 }
 
 func (ad *admin) home(w http.ResponseWriter, r *http.Request) {
-	d, err := ad.dashboard(r.Context())
+	nav, err := ad.yearNav(r, "/admin")
 	if err != nil {
 		ad.fail(w, err)
 		return
 	}
-	need, err := ad.store.NeedClassroom(r.Context())
+	d, err := ad.dashboard(r.Context(), nav.Selected)
 	if err != nil {
 		ad.fail(w, err)
 		return
 	}
-	render(w, r, pages.AdminHome(ad.name(r.Context()), d, need))
+	need, err := ad.store.NeedClassroom(r.Context(), ad.currentYear())
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
+	render(w, r, pages.AdminHome(ad.name(r.Context()), d, need, nav))
 }
 
 func defaultTimes(day time.Time) (string, string) {
@@ -116,7 +148,13 @@ func (ad *admin) newMeeting(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ad *admin) meetingForm(w http.ResponseWriter, r *http.Request, m store.Meeting, present []int64, msg string) {
-	sts, err := ad.store.Students(r.Context(), true)
+	year := store.YearOfDate(m.Date)
+	roster, err := ad.store.Students(r.Context(), year)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
+	all, err := ad.store.Students(r.Context(), 0)
 	if err != nil {
 		ad.fail(w, err)
 		return
@@ -125,7 +163,17 @@ func (ad *admin) meetingForm(w http.ResponseWriter, r *http.Request, m store.Mee
 	for _, id := range present {
 		set[id] = true
 	}
-	render(w, r, pages.MeetingForm(ad.name(r.Context()), m, sts, set, msg))
+	onRoster := map[int64]bool{}
+	for _, s := range roster {
+		onRoster[s.ID] = true
+	}
+	var others []store.Student
+	for _, s := range all {
+		if !onRoster[s.ID] {
+			others = append(others, s)
+		}
+	}
+	render(w, r, pages.MeetingForm(ad.name(r.Context()), m, roster, others, set, store.YearLabel(year), msg))
 }
 
 func meetingFromForm(r *http.Request) (store.Meeting, []int64, []newStudent, error) {
@@ -197,7 +245,7 @@ func (ad *admin) saveMeeting(w http.ResponseWriter, r *http.Request, id int64) {
 	}
 	if err == nil {
 		for _, ns := range newKids {
-			sid, uerr := ad.store.UpsertStudent(r.Context(), ns.first, ns.last, ns.grade)
+			sid, uerr := ad.store.UpsertStudent(r.Context(), ns.first, ns.last, ns.grade, store.YearOfDate(m.Date))
 			if uerr != nil {
 				err = uerr
 				break
@@ -292,7 +340,7 @@ func (ad *admin) email(w http.ResponseWriter, r *http.Request) {
 	if signer == "" {
 		signer = ad.name(r.Context())
 	}
-	need, err := ad.store.NeedClassroom(r.Context())
+	need, err := ad.store.NeedClassroom(r.Context(), ad.currentYear())
 	if err != nil {
 		ad.fail(w, err)
 		return
@@ -300,16 +348,8 @@ func (ad *admin) email(w http.ResponseWriter, r *http.Request) {
 	render(w, r, pages.EmailPage(ad.name(r.Context()), m, buildEmail(m, present, signer), need, r.URL.Path))
 }
 
-func (ad *admin) students(w http.ResponseWriter, r *http.Request) {
-	sts, err := ad.store.Students(r.Context(), false)
-	if err != nil {
-		ad.fail(w, err)
-		return
-	}
+func sortStudents(sts []store.Student) {
 	sort.SliceStable(sts, func(i, j int) bool {
-		if sts[i].Active != sts[j].Active {
-			return sts[i].Active
-		}
 		gi, gj := sts[i].Grade, sts[j].Grade
 		if gi == 0 {
 			gi = 99
@@ -320,71 +360,129 @@ func (ad *admin) students(w http.ResponseWriter, r *http.Request) {
 		if gi != gj {
 			return gi < gj
 		}
-		return sts[i].LastName+sts[i].FirstName < sts[j].LastName+sts[j].FirstName
+		return strings.ToLower(sts[i].LastName+sts[i].FirstName) < strings.ToLower(sts[j].LastName+sts[j].FirstName)
 	})
-	render(w, r, pages.StudentsAdmin(ad.name(r.Context()), sts))
+}
+
+func (ad *admin) studentView(r *http.Request) (pages.StudentView, error) {
+	nav, err := ad.yearNav(r, "/admin/students")
+	if err != nil {
+		return pages.StudentView{}, err
+	}
+	ms, err := ad.store.Meetings(r.Context(), nav.Selected)
+	if err != nil {
+		return pages.StudentView{}, err
+	}
+	v := pages.StudentView{Nav: nav, Meetings: len(ms), EditYear: nav.Selected}
+	if v.EditYear == 0 {
+		v.EditYear = nav.Current
+	}
+	return v, nil
+}
+
+func (ad *admin) students(w http.ResponseWriter, r *http.Request) {
+	v, err := ad.studentView(r)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
+	sts, err := ad.store.Students(r.Context(), v.Nav.Selected)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
+	sortStudents(sts)
+	render(w, r, pages.StudentsAdmin(ad.name(r.Context()), sts, v))
 }
 
 func (ad *admin) addStudent(w http.ResponseWriter, r *http.Request) {
+	v, err := ad.studentView(r)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
 	first, last := strings.TrimSpace(r.FormValue("first")), strings.TrimSpace(r.FormValue("last"))
 	if first == "" || last == "" {
 		http.Error(w, "first and last name required", http.StatusUnprocessableEntity)
 		return
 	}
 	grade, _ := strconv.Atoi(r.FormValue("grade"))
-	id, err := ad.store.UpsertStudent(r.Context(), first, last, grade)
+	id, err := ad.store.UpsertStudent(r.Context(), first, last, grade, v.EditYear)
 	if err != nil {
 		ad.fail(w, err)
 		return
 	}
-	ad.studentRow(w, r, id, false)
+	ad.studentRow(w, r, v, id, false)
 }
 
-func (ad *admin) studentRow(w http.ResponseWriter, r *http.Request, id int64, edit bool) {
-	sts, err := ad.store.Students(r.Context(), false)
+func (ad *admin) studentRow(w http.ResponseWriter, r *http.Request, v pages.StudentView, id int64, edit bool) {
+	st, err := ad.store.Student(r.Context(), id, v.Nav.Selected)
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
 	if err != nil {
 		ad.fail(w, err)
 		return
 	}
-	for _, s := range sts {
-		if s.ID == id {
-			if edit {
-				render(w, r, pages.StudentEditRow(s))
+	if edit {
+		if v.Nav.Selected == 0 {
+			inYear, err := ad.store.Student(r.Context(), id, v.EditYear)
+			if err != nil {
+				ad.fail(w, err)
 				return
 			}
-			render(w, r, pages.StudentRow(s))
-			active := 0
-			for _, x := range sts {
-				if x.Active {
-					active++
-				}
-			}
-			render(w, r, pages.RosterCount(active, true))
-			return
+			st.OnRoster, st.Grade = inYear.OnRoster, inYear.Grade
 		}
+		render(w, r, pages.StudentEditRow(st, v))
+		return
 	}
-	http.NotFound(w, r)
+	if v.Nav.Selected == 0 || st.OnRoster {
+		render(w, r, pages.StudentRow(st, v))
+	}
+	roster, err := ad.store.Students(r.Context(), v.Nav.Selected)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
+	render(w, r, pages.RosterCount(len(roster), v, true))
 }
 
 func (ad *admin) viewStudent(w http.ResponseWriter, r *http.Request) {
-	ad.studentRow(w, r, pathID(r), false)
+	v, err := ad.studentView(r)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
+	ad.studentRow(w, r, v, pathID(r), false)
 }
+
 func (ad *admin) editStudent(w http.ResponseWriter, r *http.Request) {
-	ad.studentRow(w, r, pathID(r), true)
+	v, err := ad.studentView(r)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
+	ad.studentRow(w, r, v, pathID(r), true)
 }
 
 func (ad *admin) updateStudent(w http.ResponseWriter, r *http.Request) {
+	v, err := ad.studentView(r)
+	if err != nil {
+		ad.fail(w, err)
+		return
+	}
 	grade, _ := strconv.Atoi(r.FormValue("grade"))
-	st := store.Student{ID: pathID(r), FirstName: strings.TrimSpace(r.FormValue("first")), LastName: strings.TrimSpace(r.FormValue("last")), Grade: grade, Active: r.FormValue("active") == "on", InClassroom: r.FormValue("classroom") == "on"}
+	st := store.Student{ID: pathID(r), FirstName: strings.TrimSpace(r.FormValue("first")), LastName: strings.TrimSpace(r.FormValue("last")), Grade: grade, OnRoster: r.FormValue("roster") == "on", InClassroom: r.FormValue("classroom") == "on"}
 	if st.FirstName == "" || st.LastName == "" {
 		http.Error(w, "first and last name required", http.StatusUnprocessableEntity)
 		return
 	}
-	if err := ad.store.UpdateStudent(r.Context(), st); err != nil {
+	if err := ad.store.UpdateStudent(r.Context(), st, v.EditYear); err != nil {
 		ad.fail(w, err)
 		return
 	}
-	ad.studentRow(w, r, st.ID, false)
+	ad.studentRow(w, r, v, st.ID, false)
 }
 
 func (ad *admin) markClassroom(w http.ResponseWriter, r *http.Request) {
@@ -422,7 +520,7 @@ func importData(ctx context.Context, st *store.Store, in io.Reader) error {
 	meetings := map[string]*pending{}
 	var order []string
 	ids := map[string]int64{}
-	sts, err := st.Students(ctx, false)
+	sts, err := st.Students(ctx, 0)
 	if err != nil {
 		return err
 	}
@@ -440,7 +538,7 @@ func importData(ctx context.Context, st *store.Store, in io.Reader) error {
 		switch rec[0] {
 		case "student":
 			grade, _ := strconv.Atoi(rec[3])
-			id, err := st.UpsertStudent(ctx, rec[1], rec[2], grade)
+			id, err := st.UpsertStudent(ctx, rec[1], rec[2], grade, 0)
 			if err != nil {
 				return err
 			}

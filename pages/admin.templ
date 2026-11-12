@@ -44,7 +44,24 @@ templ adminTab(href, label string, on bool) {
 	}
 }
 
-templ AdminHome(user string, d Dashboard, need []store.Student) {
+templ YearFilter(n YearNav) {
+	<nav aria-label="School year" class="inline-flex flex-wrap items-center gap-1 rounded-lg border bg-card p-1 text-sm">
+		for _, y := range n.Years {
+			@yearLink(n.Href(y), store.YearLabel(y), n.Selected == y)
+		}
+		@yearLink(n.Href(0), "All", n.Selected == 0)
+	</nav>
+}
+
+templ yearLink(href, label string, on bool) {
+	<a
+		href={ templ.SafeURL(href) }
+		aria-current?={ on }
+		class={ "rounded-md px-3 py-1 tabular-nums transition-colors", templ.KV("bg-primary text-primary-foreground font-semibold", on), templ.KV("text-muted-foreground hover:bg-muted hover:text-foreground", !on) }
+	>{ label }</a>
+}
+
+templ AdminHome(user string, d Dashboard, need []store.Student, nav YearNav) {
 	@adminShell(user, "meetings") {
 		@classroomReminder(need, "/admin")
 		<div class="mb-6 flex flex-wrap items-end gap-x-4 gap-y-3">
@@ -52,10 +69,11 @@ templ AdminHome(user string, d Dashboard, need []store.Student) {
 				<h1 class="text-xl font-bold">Attendance</h1>
 				if m, ok := d.Latest(); ok {
 					<p class="text-sm text-muted-foreground">
-						{ m.Day().Format("Monday, Jan 2") }: <span class="font-semibold text-foreground">{ fmt.Sprint(m.Present) } here</span> of { fmt.Sprint(d.Roster) }. { fmt.Sprint(len(d.Meetings)) } meetings this year.
+						{ m.Day().Format("Monday, Jan 2") }: <span class="font-semibold text-foreground">{ fmt.Sprint(m.Present) } here</span> of { fmt.Sprint(d.Roster) }. { fmt.Sprintf("%d meetings in %s.", len(d.Meetings), nav.Label()) }
 					</p>
 				}
 			</div>
+			@YearFilter(nav)
 			if m, ok := d.Latest(); ok {
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: fmt.Sprintf("/admin/meetings/%d/email", m.ID)}) {
 					@icon.Mail(icon.Props{Size: 14})
@@ -162,12 +180,15 @@ templ AdminHome(user string, d Dashboard, need []store.Student) {
 	}
 }
 
-templ Leaderboard(user string, d Dashboard) {
+templ Leaderboard(user string, d Dashboard, nav YearNav) {
 	@adminShell(user, "leaders") {
 		{{ leaders := d.Leaders() }}
-		<div class="mb-8">
-			<h1 class="font-display text-3xl text-primary sm:text-4xl">Attendance leaders</h1>
-			<p class="text-sm text-muted-foreground">{ fmt.Sprintf("%d meetings so far. Ties go to the longer current streak.", len(d.Meetings)) }</p>
+		<div class="mb-8 flex flex-wrap items-end justify-between gap-3">
+			<div>
+				<h1 class="font-display text-3xl text-primary sm:text-4xl">Attendance leaders</h1>
+				<p class="text-sm text-muted-foreground">{ fmt.Sprintf("%d meetings in %s. Ties go to the longer current streak.", len(d.Meetings), nav.Label()) }</p>
+			</div>
+			@YearFilter(nav)
 		</div>
 		if len(leaders) == 0 {
 			<p class="text-sm text-muted-foreground">Nobody yet. Take attendance and the board fills in.</p>
@@ -264,7 +285,7 @@ func clock12(hhmm string) string {
 	return fmt.Sprintf("%d:%02d", h, mm)
 }
 
-templ MeetingForm(user string, m store.Meeting, sts []store.Student, present map[int64]bool, msg string) {
+templ MeetingForm(user string, m store.Meeting, sts, others []store.Student, present map[int64]bool, year, msg string) {
 	@adminShell(user, "meetings") {
 		<form id="attendance" method="post" action={ templ.SafeURL(formAction(m)) } class="space-y-6">
 			<div class="flex flex-wrap items-end gap-4">
@@ -295,18 +316,23 @@ templ MeetingForm(user string, m store.Meeting, sts []store.Student, present map
 				}
 			</div>
 			<div>
-				<h2 class="mb-3 font-semibold">Who's here? Tap each student.</h2>
+				<h2 class="mb-3 font-semibold">{ "Who's here? Tap each student on the " + year + " roster." }</h2>
 				<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
 					for _, s := range sts {
-						<label class="flex cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-3 transition-colors has-checked:border-primary has-checked:bg-primary/10">
-							<input type="checkbox" name="present" value={ fmt.Sprint(s.ID) } checked?={ present[s.ID] } data-present class="size-5 accent-[var(--primary)]"/>
-							<span class="flex-1 font-medium">{ s.Name() }</span>
-							if s.Grade > 0 {
-								<span class="text-sm text-muted-foreground">{ fmt.Sprintf("Gr %d", s.Grade) }</span>
-							}
-						</label>
+						@presentCard(s, present[s.ID])
 					}
 				</div>
+				if len(others) > 0 {
+					<details class="mt-3" open?={ anyPresent(others, present) }>
+						<summary class="cursor-pointer text-sm text-muted-foreground hover:text-foreground">{ fmt.Sprintf("Students from other years (%d)", len(others)) }</summary>
+						<p class="mt-2 mb-2 text-xs text-muted-foreground">{ "Checking someone here adds them to the " + year + " roster." }</p>
+						<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+							for _, s := range others {
+								@presentCard(s, present[s.ID])
+							}
+						</div>
+					</details>
+				}
 			</div>
 			<div class="grid gap-4 md:grid-cols-2">
 				<div class="space-y-2">
@@ -354,6 +380,25 @@ func formAction(m store.Meeting) string {
 	return fmt.Sprintf("/admin/meetings/%d", m.ID)
 }
 
+templ presentCard(s store.Student, on bool) {
+	<label class="flex cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-3 transition-colors has-checked:border-primary has-checked:bg-primary/10">
+		<input type="checkbox" name="present" value={ fmt.Sprint(s.ID) } checked?={ on } data-present class="size-5 accent-[var(--primary)]"/>
+		<span class="flex-1 font-medium">{ s.Name() }</span>
+		if s.Grade > 0 {
+			<span class="text-sm text-muted-foreground">{ fmt.Sprintf("Gr %d", s.Grade) }</span>
+		}
+	</label>
+}
+
+func anyPresent(sts []store.Student, present map[int64]bool) bool {
+	for _, s := range sts {
+		if present[s.ID] {
+			return true
+		}
+	}
+	return false
+}
+
 templ field(label string) {
 	<label class="block space-y-1.5">
 		<span class="text-sm font-medium text-muted-foreground">{ label }</span>
@@ -396,27 +441,28 @@ templ copyField(id, label, value string, multi bool) {
 	</div>
 }
 
-templ StudentsAdmin(user string, sts []store.Student) {
+templ StudentsAdmin(user string, sts []store.Student, v StudentView) {
 	@adminShell(user, "students") {
-		<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+		<div class="mb-5 flex max-w-4xl flex-wrap items-end justify-between gap-3">
 			<div>
 				<h1 class="text-3xl font-bold">Students</h1>
-				@RosterCount(activeCount(sts), false)
+				@RosterCount(len(sts), v, false)
 			</div>
+			@YearFilter(v.Nav)
 		</div>
 		<form
-			hx-post="/admin/students"
+			hx-post={ "/admin/students?year=" + v.Nav.Param() }
 			hx-target="#student-rows"
 			hx-swap="afterbegin"
 			hx-on::after-request="if (event.detail.successful) { this.reset(); this.querySelector('input').focus() }"
-			class="mb-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem_auto] items-center gap-2 rounded-lg border bg-card p-2 max-w-4xl"
+			class="mb-4 grid max-w-4xl grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem_auto] items-center gap-2 rounded-lg border bg-card p-2"
 		>
 			<input name="first" placeholder="First name" aria-label="First name" required autocomplete="off" class={ cellInput }/>
 			<input name="last" placeholder="Last name" aria-label="Last name" required autocomplete="off" class={ cellInput }/>
 			@gradeSelect(0)
 			@button.Button(button.Props{Size: button.SizeSm, Type: button.TypeSubmit}) {
 				@icon.UserPlus(icon.Props{Size: 14})
-				Add
+				{ "Add to " + store.YearLabel(v.EditYear) }
 			}
 		</form>
 		<div class="max-w-4xl overflow-x-auto rounded-lg border bg-card">
@@ -424,41 +470,48 @@ templ StudentsAdmin(user string, sts []store.Student) {
 				<thead class="border-b text-left text-xs text-muted-foreground">
 					<tr>
 						<th class="px-3 py-2 font-medium">Student</th>
-						<th class="w-24 px-3 py-2 font-medium">Grade</th>
-						<th class="w-36 px-3 py-2 font-medium">Classroom</th>
-						<th class="w-28 px-3 py-2 font-medium">Roster</th>
+						<th class="w-20 px-3 py-2 font-medium">Grade</th>
+						<th class="w-40 px-3 py-2 font-medium">Attended</th>
+						<th class="w-32 px-3 py-2 font-medium">Classroom</th>
+						if v.Nav.Selected == 0 {
+							<th class="w-40 px-3 py-2 font-medium">Years</th>
+						}
 						<th class="w-24 px-3 py-2"><span class="sr-only">Actions</span></th>
 					</tr>
 				</thead>
 				<tbody id="student-rows" class="divide-y">
 					for _, s := range sts {
-						@StudentRow(s)
+						@StudentRow(s, v)
 					}
 				</tbody>
 			</table>
+			if len(sts) == 0 {
+				<p class="px-4 py-8 text-center text-sm text-muted-foreground">{ "Nobody on the " + v.Nav.Label() + " roster yet. Add a student above or take attendance." }</p>
+			}
 		</div>
 	}
 }
 
 const cellInput = "w-full min-w-0 rounded-md border bg-background px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
-func activeCount(sts []store.Student) int {
-	n := 0
-	for _, s := range sts {
-		if s.Active {
-			n++
-		}
-	}
-	return n
-}
-
 func rowID(s store.Student) string { return fmt.Sprintf("student-%d", s.ID) }
 
-templ RosterCount(n int, oob bool) {
+func attendPct(n, total int) int {
+	if total == 0 {
+		return 0
+	}
+	return n * 100 / total
+}
+
+templ RosterCount(n int, v StudentView, oob bool) {
+	{{ text := fmt.Sprintf("%d on the %s roster", n, v.Nav.Label()) }}
+	if v.Nav.Selected == 0 {
+		{{ text = fmt.Sprintf("%d students across all years", n) }}
+	}
 	if oob {
-		<p id="roster-count" hx-swap-oob="true" class="text-sm text-muted-foreground">{ fmt.Sprintf("%d on the roster", n) }</p>
+		<p id="roster-count" hx-swap-oob="true" class="text-sm text-muted-foreground">{ text }</p>
 	} else {
-		<p id="roster-count" class="text-sm text-muted-foreground">{ fmt.Sprintf("%d on the roster", n) }</p>
+		<p id="roster-count" class="text-sm text-muted-foreground">{ text }</p>
 	}
 }
 
@@ -471,8 +524,8 @@ templ gradeSelect(g int) {
 	</select>
 }
 
-templ StudentRow(s store.Student) {
-	<tr id={ rowID(s) } class={ "h-11 hover:bg-muted/40", templ.KV("text-muted-foreground", !s.Active) }>
+templ StudentRow(s store.Student, v StudentView) {
+	<tr id={ rowID(s) } class="h-11 hover:bg-muted/40">
 		<td class="px-3">
 			<span class="flex items-center gap-2.5">
 				<span class="size-2.5 shrink-0 rounded-full" style={ "background:" + gradeHex(s.Grade) }></span>
@@ -487,30 +540,41 @@ templ StudentRow(s store.Student) {
 			}
 		</td>
 		<td class="px-3">
+			<span class="flex items-center gap-2 tabular-nums">
+				<span class="h-1.5 w-14 overflow-hidden rounded-full bg-muted">
+					<span class="block h-full rounded-full bg-primary" style={ fmt.Sprintf("width:%d%%", attendPct(s.Attended, v.Meetings)) }></span>
+				</span>
+				<span><span class="font-semibold">{ fmt.Sprint(s.Attended) }</span><span class="text-muted-foreground">{ fmt.Sprintf(" / %d", v.Meetings) }</span></span>
+			</span>
+		</td>
+		<td class="px-3">
 			if s.InClassroom {
 				<span class="inline-flex items-center gap-1 text-muted-foreground">
 					@icon.Check(icon.Props{Size: 14})
 					Added
 				</span>
 			} else {
-				<span class="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Needs adding</span>
+				<span class="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Needs adding</span>
 			}
 		</td>
-		<td class="px-3">
-			if s.Active {
-				Active
-			} else {
-				Off roster
-			}
-		</td>
+		if v.Nav.Selected == 0 {
+			<td class="px-3 text-xs text-muted-foreground tabular-nums">
+				for i, y := range s.Years {
+					if i > 0 {
+						{ ", " }
+					}
+					{ yearShort(y) }
+				}
+			</td>
+		}
 		<td class="px-2 text-right">
 			<button
 				type="button"
-				hx-get={ fmt.Sprintf("/admin/students/%d/edit", s.ID) }
+				hx-get={ v.URL("/admin/students/%d/edit", s.ID) }
 				hx-target="closest tr"
 				hx-swap="outerHTML"
 				aria-label={ "Edit " + s.Name() }
-				class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring outline-none"
+				class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				@icon.Pencil(icon.Props{Size: 15})
 			</button>
@@ -518,8 +582,8 @@ templ StudentRow(s store.Student) {
 	</tr>
 }
 
-templ StudentEditRow(s store.Student) {
-	<tr id={ rowID(s) } class="bg-muted/40" data-cancel={ fmt.Sprintf("/admin/students/%d/row", s.ID) }>
+templ StudentEditRow(s store.Student, v StudentView) {
+	<tr id={ rowID(s) } class="bg-muted/40" data-cancel={ v.URL("/admin/students/%d/row", s.ID) }>
 		<td class="px-2 py-2">
 			<div class="grid grid-cols-2 gap-2">
 				<input name="first" value={ s.FirstName } aria-label="First name" required autofocus class={ cellInput }/>
@@ -530,31 +594,34 @@ templ StudentEditRow(s store.Student) {
 			@gradeSelect(s.Grade)
 		</td>
 		<td class="px-3 py-2">
-			<label class="flex items-center gap-2"><input type="checkbox" name="classroom" checked?={ s.InClassroom } class="size-4 accent-[var(--primary)]"/> Added</label>
+			<label class="flex items-center gap-2 whitespace-nowrap"><input type="checkbox" name="roster" checked?={ s.OnRoster } class="size-4 accent-[var(--primary)]"/> { "On " + store.YearLabel(v.EditYear) }</label>
 		</td>
 		<td class="px-3 py-2">
-			<label class="flex items-center gap-2"><input type="checkbox" name="active" checked?={ s.Active } class="size-4 accent-[var(--primary)]"/> Active</label>
+			<label class="flex items-center gap-2"><input type="checkbox" name="classroom" checked?={ s.InClassroom } class="size-4 accent-[var(--primary)]"/> Added</label>
 		</td>
+		if v.Nav.Selected == 0 {
+			<td></td>
+		}
 		<td class="px-2 py-2">
 			<div class="flex justify-end gap-1">
 				<button
 					type="button"
-					hx-post={ fmt.Sprintf("/admin/students/%d", s.ID) }
+					hx-post={ v.URL("/admin/students/%d", s.ID) }
 					hx-include="closest tr"
 					hx-target="closest tr"
 					hx-swap="outerHTML"
 					aria-label="Save"
-					class="inline-flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring outline-none"
+					class="inline-flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					@icon.Check(icon.Props{Size: 15})
 				</button>
 				<button
 					type="button"
-					hx-get={ fmt.Sprintf("/admin/students/%d/row", s.ID) }
+					hx-get={ v.URL("/admin/students/%d/row", s.ID) }
 					hx-target="closest tr"
 					hx-swap="outerHTML"
 					aria-label="Cancel"
-					class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring outline-none"
+					class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					@icon.X(icon.Props{Size: 15})
 				</button>

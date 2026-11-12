@@ -57,7 +57,7 @@ func TestImportData(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ms, _ := st.Meetings(ctx)
+	ms, _ := st.Meetings(ctx, 0)
 	if len(ms) != 1 || ms[0].Present != 1 || ms[0].TakenBy != "Linus Torvalds" {
 		t.Fatalf("meetings = %+v", ms)
 	}
