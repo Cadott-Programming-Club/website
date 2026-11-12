@@ -11,14 +11,14 @@ import (
 
 func TestBuildEmail(t *testing.T) {
 	m := store.Meeting{Date: "2026-11-10", StartTime: "15:00", EndTime: "17:30"}
-	e := buildEmail(m, []store.Student{{FirstName: "Ada", LastName: "Lovelace", Grade: 7}, {FirstName: "Alan", LastName: "Turing"}}, "Cory LaNou")
+	e := buildEmail(m, []store.Student{{FirstName: "Ada", LastName: "Lovelace", Grade: 7}, {FirstName: "Alan", LastName: "Turing"}}, "Grace Hopper")
 	if e.To != "boonea@cadott.k12.wi.us" {
 		t.Errorf("to = %q", e.To)
 	}
 	if e.Subject != "Programming Club attendance - Tuesday, November 10, 2026" {
 		t.Errorf("subject = %q", e.Subject)
 	}
-	want := "Programming Club attendance for Tuesday, November 10, 2026, 3:00 to 5:30 PM.\n\nPresent (2):\nAda Lovelace, grade 7\nAlan Turing\n\nCory LaNou\n"
+	want := "Programming Club attendance for Tuesday, November 10, 2026, 3:00 to 5:30 PM.\n\nPresent (2):\nAda Lovelace, grade 7\nAlan Turing\n\nGrace Hopper\n"
 	if e.Body != want {
 		t.Errorf("body =\n%s\nwant\n%s", e.Body, want)
 	}
@@ -51,14 +51,14 @@ func TestImportData(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	in := "student,Ada,Lovelace,7\nstudent,Alan,Turing,\nmeeting,2026-11-03,15:00,17:30,Logan LaNou\npresent,2026-11-03,Ada,Lovelace\n"
+	in := "student,Ada,Lovelace,7\nstudent,Alan,Turing,\nmeeting,2026-11-03,15:00,17:30,Linus Torvalds\npresent,2026-11-03,Ada,Lovelace\n"
 	for range 2 {
 		if err := importData(ctx, st, strings.NewReader(in)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	ms, _ := st.Meetings(ctx)
-	if len(ms) != 1 || ms[0].Present != 1 || ms[0].TakenBy != "Logan LaNou" {
+	if len(ms) != 1 || ms[0].Present != 1 || ms[0].TakenBy != "Linus Torvalds" {
 		t.Fatalf("meetings = %+v", ms)
 	}
 	rows, total, _ := st.Report(ctx)
