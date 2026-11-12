@@ -20,6 +20,7 @@ import (
 
 	"website/assets"
 	"website/pages"
+	"website/store"
 )
 
 func main() {
@@ -27,12 +28,39 @@ func main() {
 	if contentDir == "" {
 		contentDir = "content"
 	}
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "club.db"
+	}
+	st, err := store.Open(context.Background(), dbPath)
+	if err != nil {
+		fatal(err)
+	}
+	defer st.Close()
+	if len(os.Args) > 1 && os.Args[1] == "import" {
+		if err := importData(context.Background(), st, os.Stdin); err != nil {
+			fatal(err)
+		}
+		return
+	}
+	loc, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		fatal(err)
+	}
+	a, err := setupAuth()
+	if err != nil {
+		fatal(err)
+	}
 	mime.AddExtensionType(".wasm", "application/wasm")
 	mime.AddExtensionType(".pck", "application/octet-stream")
 
 	mux := http.NewServeMux()
 	setupAssetsRoutes(mux)
 	routes(mux, contentDir)
+	mux.HandleFunc("GET /auth/login", a.login)
+	mux.HandleFunc("GET /auth/callback", a.callback)
+	mux.HandleFunc("POST /auth/logout", a.logout)
+	(&admin{store: st, loc: loc, advisors: parseAdvisors(os.Getenv("ADVISORS"))}).routes(mux, a)
 
 	ln, err := listen()
 	if err != nil {
@@ -94,6 +122,9 @@ func routes(mux *http.ServeMux, contentDir string) {
 	mux.Handle("GET /2026-27/{slug}/slides.html", contentFiles(contentDir))
 	mux.Handle("GET /games/{slug}/play/", contentFiles(contentDir))
 	mux.Handle("GET /setup", setupScript(contentDir))
+	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("User-agent: *\nDisallow: /admin\nDisallow: /auth/\n"))
+	})
 	mux.Handle("GET /", page(pages.NotFound(facebookURL), http.StatusNotFound))
 }
 
@@ -142,6 +173,36 @@ func setupScript(dir string) http.Handler {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		http.ServeFile(w, r, filepath.Join(dir, "setup.sh"))
 	})
+}
+
+func setupAuth() (*auth, error) {
+	allowed := strings.Split(strings.ToLower(strings.ReplaceAll(os.Getenv("ALLOWED_EMAILS"), " ", "")), ",")
+	if isDevelopment() && os.Getenv("OIDC_CLIENT_ID") == "" {
+		log.Print("development: attendance pages open without login as dev@localhost")
+		return &auth{devUser: "dev@localhost", allowed: []string{"dev@localhost"}}, nil
+	}
+	issuer := os.Getenv("OIDC_ISSUER")
+	if issuer == "" {
+		issuer = "https://id.cadottprogrammingclub.com"
+	}
+	clientID := os.Getenv("OIDC_CLIENT_ID")
+	if clientID == "" || os.Getenv("BASE_URL") == "" || allowed[0] == "" {
+		return nil, errors.New("OIDC_CLIENT_ID, BASE_URL and ALLOWED_EMAILS must be set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return newAuth(ctx, issuer, clientID, os.Getenv("BASE_URL"), os.Getenv("SESSION_SECRET"), allowed, !isDevelopment())
+}
+
+func parseAdvisors(s string) map[string]string {
+	out := map[string]string{}
+	for _, pair := range strings.Split(s, ",") {
+		email, name, ok := strings.Cut(pair, "=")
+		if ok {
+			out[strings.ToLower(strings.TrimSpace(email))] = strings.TrimSpace(name)
+		}
+	}
+	return out
 }
 
 func fatal(err error) {

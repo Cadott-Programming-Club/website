@@ -21,3 +21,9 @@ type Game struct {
 
 func (g Game) URL() string     { return "/games/" + g.Slug + "/" }
 func (g Game) PlayURL() string { return g.URL() + "play/" }
+
+type Email struct {
+	To      string
+	Subject string
+	Body    string
+}

@@ -209,7 +209,13 @@ templ Students(fb string) {
 }
 
 templ linkCard(href, title, body string, external bool) {
-	<a href={ templ.SafeURL(href) } if external { target="_blank" } class="group block">
+	<a
+		href={ templ.SafeURL(href) }
+		if external {
+			target="_blank"
+		}
+		class="group block"
+	>
 		@card.Card(card.Props{Class: "h-full transition-colors group-hover:ring-primary/60"}) {
 			@card.Header() {
 				@card.Title(card.TitleProps{Class: "flex items-center gap-2 group-hover:text-primary"}) {

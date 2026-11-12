@@ -40,6 +40,7 @@ templ header(n Nav) {
 				@navLink("/students/", "Students")
 				@navLink("/2026-27/", "Lessons")
 				@navLink("/games/", "Games")
+				@navLink("/admin", "Admin")
 				@button.Button(button.Props{Variant: button.VariantGhost, Href: n.Facebook, Target: "_blank", Class: "text-[15px]"}) {
 					@icon.ExternalLink(icon.Props{Size: 14})
 					Facebook
@@ -66,6 +67,7 @@ templ footer(n Nav) {
 				<a class="hover:text-foreground" href="/students/">Students</a>
 				<a class="hover:text-foreground" href="/2026-27/">Lessons</a>
 				<a class="hover:text-foreground" href="/games/">Games</a>
+				<a class="hover:text-foreground" href="/admin">Admin</a>
 				<a class="hover:text-foreground" href={ templ.SafeURL(n.Facebook) } target="_blank">Facebook</a>
 			</nav>
 		</div>

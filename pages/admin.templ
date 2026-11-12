@@ -1,0 +1,605 @@
+package pages
+
+import (
+	"fmt"
+	"website/components/button"
+	"website/components/icon"
+	"website/layouts"
+	"website/store"
+)
+
+templ adminShell(user, active string) {
+	@layouts.Base(layouts.Nav{Title: "Attendance - Cadott Programming Club", Facebook: "https://www.facebook.com/profile.php?id=61580536562505"}) {
+		<script src="/assets/js/htmx.min.js" defer></script>
+		<script src="/assets/js/admin.js" defer></script>
+		<div class="border-b bg-card/50">
+			<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-1 px-4 py-2">
+				@adminTab("/admin", "Attendance", active == "meetings")
+				@adminTab("/admin/leaderboard", "Leaderboard", active == "leaders")
+				@adminTab("/admin/students", "Students", active == "students")
+				<span class="flex-1"></span>
+				<span class="hidden text-sm text-muted-foreground sm:inline">{ user }</span>
+				<form method="post" action="/auth/logout">
+					@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Type: button.TypeSubmit}) {
+						Log out
+					}
+				</form>
+			</div>
+		</div>
+		<div class="mx-auto max-w-6xl px-4 py-8">
+			{ children... }
+		</div>
+	}
+}
+
+templ adminTab(href, label string, on bool) {
+	if on {
+		@button.Button(button.Props{Variant: button.VariantSecondary, Size: button.SizeSm, Href: href}) {
+			{ label }
+		}
+	} else {
+		@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: href}) {
+			{ label }
+		}
+	}
+}
+
+templ AdminHome(user string, d Dashboard, need []store.Student) {
+	@adminShell(user, "meetings") {
+		@classroomReminder(need, "/admin")
+		<div class="mb-6 flex flex-wrap items-end gap-x-4 gap-y-3">
+			<div class="mr-auto">
+				<h1 class="text-xl font-bold">Attendance</h1>
+				if m, ok := d.Latest(); ok {
+					<p class="text-sm text-muted-foreground">
+						{ m.Day().Format("Monday, Jan 2") }: <span class="font-semibold text-foreground">{ fmt.Sprint(m.Present) } here</span> of { fmt.Sprint(d.Roster) }. { fmt.Sprint(len(d.Meetings)) } meetings this year.
+					</p>
+				}
+			</div>
+			if m, ok := d.Latest(); ok {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Href: fmt.Sprintf("/admin/meetings/%d/email", m.ID)}) {
+					@icon.Mail(icon.Props{Size: 14})
+					Email Amber
+				}
+			}
+			@button.Button(button.Props{Size: button.SizeSm, Href: "/admin/meetings/new"}) {
+				@icon.ClipboardCheck(icon.Props{Size: 14})
+				Take attendance
+			}
+		</div>
+		if len(d.Meetings) == 0 {
+			<p class="text-sm text-muted-foreground">No meetings yet. Take attendance to start the year.</p>
+		} else {
+			<div class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-px overflow-hidden rounded-lg border bg-border">
+				for _, g := range d.Grades {
+					<a href={ templ.SafeURL(fmt.Sprintf("#grade-%d", g.Grade)) } class="bg-card px-3 py-2.5 hover:bg-muted/40">
+						<div class="flex items-baseline justify-between gap-2">
+							<span class="text-sm font-semibold" style={ "color:" + g.Hex }>{ g.Label() }</span>
+							<span class="text-xs tabular-nums text-muted-foreground">{ fmt.Sprint(len(g.Rows)) }</span>
+						</div>
+						<div class="mt-2 h-1 rounded-full bg-muted">
+							<div class="h-full rounded-full" style={ fmt.Sprintf("width:%d%%;background:%s", g.Rate, g.Hex) }></div>
+						</div>
+						<div class="mt-1 text-[11px] text-muted-foreground">{ fmt.Sprintf("comes %d%% of the time", g.Rate) }</div>
+					</a>
+				}
+			</div>
+			<div class="w-fit max-w-full overflow-x-auto rounded-lg border bg-card">
+				<table class="border-collapse text-sm">
+					<thead class="text-xs text-muted-foreground">
+						<tr class="border-b">
+							<th class="sticky left-0 z-10 min-w-48 bg-card px-3 py-2 text-left font-medium">Student</th>
+							if d.ShowYear() {
+								<th class="hidden w-72 px-3 py-2 text-left font-medium md:table-cell">Whole year</th>
+							}
+							for i, m := range d.Recent() {
+								<th class={ "w-11 min-w-11 px-0.5 py-1.5 text-center font-normal", templ.KV("bg-primary/10 text-foreground", i == len(d.Recent())-1) }>
+									<a href={ templ.SafeURL(fmt.Sprintf("/admin/meetings/%d", m.ID)) } class="block leading-tight hover:text-primary" title={ "Edit " + m.Day().Format("Monday, January 2") }>
+										<span class="block text-[10px]">{ m.Day().Format("Mon") }</span>
+										<span class="block tabular-nums">{ m.Day().Format("1/2") }</span>
+									</a>
+								</th>
+							}
+							<th class="w-16 px-3 py-2 text-right font-medium">Came</th>
+						</tr>
+					</thead>
+					for _, g := range d.Grades {
+						<tbody id={ fmt.Sprintf("grade-%d", g.Grade) } style={ "--g:" + g.Hex } class="scroll-mt-20">
+							<tr>
+								<th class="sticky left-0 z-10 bg-card px-3 pt-4 pb-1 text-left">
+									<span class="flex items-center gap-2 text-xs whitespace-nowrap">
+										<span class="size-2 rounded-full" style="background:var(--g)"></span>
+										<span class="font-semibold" style="color:var(--g)">{ g.Label() }</span>
+										<span class="font-normal text-muted-foreground">{ g.Summary() }</span>
+									</span>
+								</th>
+								if d.ShowYear() {
+									<td class="hidden md:table-cell"></td>
+								}
+								for i := range d.Recent() {
+									<td class={ "pt-4 pb-1 text-center text-[11px] tabular-nums text-muted-foreground", templ.KV("bg-primary/10", i == len(d.Recent())-1) }>
+										if i == len(d.Recent())-1 {
+											{ fmt.Sprint(g.Latest) }
+										}
+									</td>
+								}
+								<td></td>
+							</tr>
+							for _, r := range g.Rows {
+								<tr class="hover:bg-muted/40">
+									<td class="sticky left-0 z-10 bg-card px-3 py-[3px] whitespace-nowrap">{ r.Student.Name() }</td>
+									if d.ShowYear() {
+										<td class="hidden w-72 px-3 py-[3px] md:table-cell">
+											<span class="flex h-3.5 items-end gap-[2px]" title={ fmt.Sprintf("%d of %d meetings", r.Attended, len(r.Present)) }>
+												for _, p := range r.Present {
+													if p {
+														<span class="h-full w-[3px] rounded-[1px]" style="background:var(--g)"></span>
+													} else {
+														<span class="h-1 w-[3px] rounded-[1px] bg-muted"></span>
+													}
+												}
+											</span>
+										</td>
+									}
+									for i, p := range r.Recent(RecentCount) {
+										<td class={ "px-0.5 py-[3px] text-center", templ.KV("bg-primary/10", i == len(r.Recent(RecentCount))-1) }>
+											if p {
+												<span class="inline-block size-3 rounded-[3px] align-middle" style="background:var(--g)"></span>
+											} else {
+												<span class="inline-block size-3 rounded-[3px] border align-middle"></span>
+											}
+										</td>
+									}
+									<td class="px-3 py-[3px] text-right text-xs tabular-nums whitespace-nowrap text-muted-foreground">{ fmt.Sprintf("%d%%", r.Percent()) }</td>
+								</tr>
+							}
+						</tbody>
+					}
+				</table>
+			</div>
+			<p class="mt-3 text-xs text-muted-foreground">Click a date to edit it. After { fmt.Sprint(RecentCount) } meetings the boxes show the latest { fmt.Sprint(RecentCount) } and a whole-year strip appears.</p>
+		}
+	}
+}
+
+templ Leaderboard(user string, d Dashboard) {
+	@adminShell(user, "leaders") {
+		{{ leaders := d.Leaders() }}
+		<div class="mb-8">
+			<h1 class="font-display text-3xl text-primary sm:text-4xl">Attendance leaders</h1>
+			<p class="text-sm text-muted-foreground">{ fmt.Sprintf("%d meetings so far. Ties go to the longer current streak.", len(d.Meetings)) }</p>
+		</div>
+		if len(leaders) == 0 {
+			<p class="text-sm text-muted-foreground">Nobody yet. Take attendance and the board fills in.</p>
+		} else {
+			<div class="mb-8 grid max-w-3xl items-end gap-3 sm:grid-cols-3">
+				for _, i := range podiumOrder(len(leaders)) {
+					{{ r := leaders[i] }}
+					<div class={ "rounded-xl border bg-card px-5 text-center", podiumPad(i) } style={ "border-color:" + r.Hex }>
+						<div class="font-display text-4xl leading-none" style={ "color:" + r.Hex }>{ fmt.Sprint(r.Rank) }</div>
+						<div class="mt-2 font-bold">{ r.Student.Name() }</div>
+						<div class="text-sm text-muted-foreground">{ fmt.Sprintf("%d of %d meetings", r.Attended, len(r.Present)) }</div>
+						if r.Streak > 1 {
+							<div class="mt-2 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+								@icon.Flame(icon.Props{Size: 12})
+								{ fmt.Sprintf("%d in a row", r.Streak) }
+							</div>
+						}
+					</div>
+				}
+			</div>
+			<div class="grid gap-8 lg:grid-cols-[1fr_18rem]">
+				<ol class="divide-y rounded-lg border bg-card">
+					for _, r := range leaders {
+						<li class="flex items-center gap-3 px-4 py-1.5 text-sm">
+							<span class="w-6 text-right font-display text-base tabular-nums text-muted-foreground">{ fmt.Sprint(r.Rank) }</span>
+							<span class="size-2 shrink-0 rounded-full" style={ "background:" + r.Hex }></span>
+							<span class="mr-auto font-medium">{ r.Student.Name() }</span>
+							if r.Streak > 1 {
+								<span class="flex items-center gap-1 text-xs text-primary" title="Current streak">
+									@icon.Flame(icon.Props{Size: 12})
+									{ fmt.Sprint(r.Streak) }
+								</span>
+							}
+							<span class="w-20 text-right text-xs text-muted-foreground" title="Best streak">{ fmt.Sprintf("best %d", r.Best) }</span>
+							<span class="w-10 text-right font-semibold tabular-nums">{ fmt.Sprint(r.Attended) }</span>
+						</li>
+					}
+				</ol>
+				<div>
+					<h2 class="mb-3 text-sm font-semibold">Which grade shows up most</h2>
+					<div class="space-y-2.5">
+						for _, g := range d.GradeStandings() {
+							<div>
+								<div class="flex justify-between text-xs">
+									<span style={ "color:" + g.Hex }>{ g.Label() }</span>
+									<span class="tabular-nums text-muted-foreground">{ fmt.Sprintf("%d%%", g.Rate) }</span>
+								</div>
+								<div class="mt-1 h-2 rounded-full bg-muted">
+									<div class="h-full rounded-full" style={ fmt.Sprintf("width:%d%%;background:%s", g.Rate, g.Hex) }></div>
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+			</div>
+		}
+	}
+}
+
+func podiumOrder(n int) []int {
+	switch {
+	case n >= 3:
+		return []int{1, 0, 2}
+	case n == 2:
+		return []int{1, 0}
+	default:
+		return []int{0}
+	}
+}
+
+func podiumPad(i int) string {
+	switch i {
+	case 0:
+		return "py-5 sm:order-2"
+	case 1:
+		return "py-4 sm:order-1"
+	default:
+		return "py-3 sm:order-3"
+	}
+}
+
+func timeRange(m store.Meeting) string {
+	return clock12(m.StartTime) + " to " + clock12(m.EndTime)
+}
+
+func clock12(hhmm string) string {
+	var h, mm int
+	if _, err := fmt.Sscanf(hhmm, "%d:%d", &h, &mm); err != nil {
+		return hhmm
+	}
+	if h > 12 {
+		h -= 12
+	}
+	return fmt.Sprintf("%d:%02d", h, mm)
+}
+
+templ MeetingForm(user string, m store.Meeting, sts []store.Student, present map[int64]bool, msg string) {
+	@adminShell(user, "meetings") {
+		<form id="attendance" method="post" action={ templ.SafeURL(formAction(m)) } class="space-y-6">
+			<div class="flex flex-wrap items-end gap-4">
+				<h1 class="mr-auto text-3xl font-bold">
+					if m.ID == 0 {
+						Take attendance
+					} else {
+						Edit attendance
+					}
+				</h1>
+				<div class="text-lg"><span class="font-bold text-primary" data-count>{ fmt.Sprint(len(present)) }</span> here</div>
+			</div>
+			if msg != "" {
+				<div class="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">{ msg }</div>
+			}
+			<div class="grid gap-4 sm:grid-cols-4">
+				@field("Date") {
+					<input type="date" name="date" value={ m.Date } required class={ inputClass }/>
+				}
+				@field("Start") {
+					<input type="time" name="start" value={ m.StartTime } required class={ inputClass }/>
+				}
+				@field("End") {
+					<input type="time" name="end" value={ m.EndTime } required class={ inputClass }/>
+				}
+				@field("Taken by") {
+					<input type="text" name="taken_by" value={ m.TakenBy } class={ inputClass }/>
+				}
+			</div>
+			<div>
+				<h2 class="mb-3 font-semibold">Who's here? Tap each student.</h2>
+				<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+					for _, s := range sts {
+						<label class="flex cursor-pointer items-center gap-3 rounded-lg border bg-card px-4 py-3 transition-colors has-checked:border-primary has-checked:bg-primary/10">
+							<input type="checkbox" name="present" value={ fmt.Sprint(s.ID) } checked?={ present[s.ID] } data-present class="size-5 accent-[var(--primary)]"/>
+							<span class="flex-1 font-medium">{ s.Name() }</span>
+							if s.Grade > 0 {
+								<span class="text-sm text-muted-foreground">{ fmt.Sprintf("Gr %d", s.Grade) }</span>
+							}
+						</label>
+					}
+				</div>
+			</div>
+			<div class="grid gap-4 md:grid-cols-2">
+				<div class="space-y-2">
+					<span class="text-sm font-medium text-muted-foreground">New students who are here</span>
+					<div data-new-list class="space-y-2">
+						@newStudentRow()
+					</div>
+					<template data-new-template>
+						@newStudentRow()
+					</template>
+					@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Type: button.TypeButton, Attributes: templ.Attributes{"data-new-add": ""}}) {
+						@icon.UserPlus(icon.Props{Size: 14})
+						Add another
+					}
+				</div>
+				@field("Notes") {
+					<textarea name="notes" rows="3" class={ inputClass }>{ m.Notes }</textarea>
+				}
+			</div>
+			<div class="flex flex-wrap gap-3">
+				@button.Button(button.Props{Size: button.SizeLg, Type: button.TypeSubmit}) {
+					Save and craft email
+				}
+				@button.Button(button.Props{Size: button.SizeLg, Variant: button.VariantGhost, Href: "/admin"}) {
+					Cancel
+				}
+			</div>
+		</form>
+		if m.ID != 0 {
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/meetings/%d/delete", m.ID)) } data-confirm="Delete this meeting and its attendance?" class="mt-10">
+				@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Type: button.TypeSubmit}) {
+					Delete meeting
+				}
+			</form>
+		}
+	}
+}
+
+const inputClass = "w-full rounded-md border bg-background px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+func formAction(m store.Meeting) string {
+	if m.ID == 0 {
+		return "/admin/meetings"
+	}
+	return fmt.Sprintf("/admin/meetings/%d", m.ID)
+}
+
+templ field(label string) {
+	<label class="block space-y-1.5">
+		<span class="text-sm font-medium text-muted-foreground">{ label }</span>
+		{ children... }
+	</label>
+}
+
+templ EmailPage(user string, m store.Meeting, e Email, need []store.Student, back string) {
+	@adminShell(user, "meetings") {
+		@classroomReminder(need, back)
+		<div class="mb-6 flex flex-wrap items-center gap-3">
+			<h1 class="mr-auto text-3xl font-bold">Email for Amber</h1>
+			@button.Button(button.Props{Variant: button.VariantOutline, Href: fmt.Sprintf("/admin/meetings/%d", m.ID)}) {
+				Edit attendance
+			}
+		</div>
+		<p class="mb-6 text-muted-foreground">Copy each part into a new email from your school account.</p>
+		<div class="space-y-5">
+			@copyField("email-to", "To", e.To, false)
+			@copyField("email-subject", "Subject", e.Subject, false)
+			@copyField("email-body", "Body", e.Body, true)
+		</div>
+	}
+}
+
+templ copyField(id, label, value string, multi bool) {
+	<div class="space-y-1.5">
+		<div class="flex items-center justify-between">
+			<span class="text-sm font-medium text-muted-foreground">{ label }</span>
+			@button.Button(button.Props{Variant: button.VariantSecondary, Size: button.SizeSm, Attributes: templ.Attributes{"data-copy": id}}) {
+				@icon.Copy(icon.Props{Size: 14})
+				<span data-label>Copy { label }</span>
+			}
+		</div>
+		if multi {
+			<textarea id={ id } readonly rows="14" class={ inputClass + " font-mono text-sm" }>{ value }</textarea>
+		} else {
+			<input id={ id } readonly value={ value } class={ inputClass }/>
+		}
+	</div>
+}
+
+templ StudentsAdmin(user string, sts []store.Student) {
+	@adminShell(user, "students") {
+		<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+			<div>
+				<h1 class="text-3xl font-bold">Students</h1>
+				@RosterCount(activeCount(sts), false)
+			</div>
+		</div>
+		<form
+			hx-post="/admin/students"
+			hx-target="#student-rows"
+			hx-swap="afterbegin"
+			hx-on::after-request="if (event.detail.successful) { this.reset(); this.querySelector('input').focus() }"
+			class="mb-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem_auto] items-center gap-2 rounded-lg border bg-card p-2 max-w-4xl"
+		>
+			<input name="first" placeholder="First name" aria-label="First name" required autocomplete="off" class={ cellInput }/>
+			<input name="last" placeholder="Last name" aria-label="Last name" required autocomplete="off" class={ cellInput }/>
+			@gradeSelect(0)
+			@button.Button(button.Props{Size: button.SizeSm, Type: button.TypeSubmit}) {
+				@icon.UserPlus(icon.Props{Size: 14})
+				Add
+			}
+		</form>
+		<div class="max-w-4xl overflow-x-auto rounded-lg border bg-card">
+			<table class="w-full text-sm">
+				<thead class="border-b text-left text-xs text-muted-foreground">
+					<tr>
+						<th class="px-3 py-2 font-medium">Student</th>
+						<th class="w-24 px-3 py-2 font-medium">Grade</th>
+						<th class="w-36 px-3 py-2 font-medium">Classroom</th>
+						<th class="w-28 px-3 py-2 font-medium">Roster</th>
+						<th class="w-24 px-3 py-2"><span class="sr-only">Actions</span></th>
+					</tr>
+				</thead>
+				<tbody id="student-rows" class="divide-y">
+					for _, s := range sts {
+						@StudentRow(s)
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+const cellInput = "w-full min-w-0 rounded-md border bg-background px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+func activeCount(sts []store.Student) int {
+	n := 0
+	for _, s := range sts {
+		if s.Active {
+			n++
+		}
+	}
+	return n
+}
+
+func rowID(s store.Student) string { return fmt.Sprintf("student-%d", s.ID) }
+
+templ RosterCount(n int, oob bool) {
+	if oob {
+		<p id="roster-count" hx-swap-oob="true" class="text-sm text-muted-foreground">{ fmt.Sprintf("%d on the roster", n) }</p>
+	} else {
+		<p id="roster-count" class="text-sm text-muted-foreground">{ fmt.Sprintf("%d on the roster", n) }</p>
+	}
+}
+
+templ gradeSelect(g int) {
+	<select name="grade" aria-label="Grade" class={ cellInput }>
+		<option value="" selected?={ g == 0 }>Gr</option>
+		for i := 5; i <= 12; i++ {
+			<option value={ fmt.Sprint(i) } selected?={ g == i }>{ fmt.Sprint(i) }</option>
+		}
+	</select>
+}
+
+templ StudentRow(s store.Student) {
+	<tr id={ rowID(s) } class={ "h-11 hover:bg-muted/40", templ.KV("text-muted-foreground", !s.Active) }>
+		<td class="px-3">
+			<span class="flex items-center gap-2.5">
+				<span class="size-2.5 shrink-0 rounded-full" style={ "background:" + gradeHex(s.Grade) }></span>
+				<span class="font-medium">{ s.Name() }</span>
+			</span>
+		</td>
+		<td class="px-3 tabular-nums">
+			if s.Grade > 0 {
+				{ fmt.Sprint(s.Grade) }
+			} else {
+				<span class="text-muted-foreground">-</span>
+			}
+		</td>
+		<td class="px-3">
+			if s.InClassroom {
+				<span class="inline-flex items-center gap-1 text-muted-foreground">
+					@icon.Check(icon.Props{Size: 14})
+					Added
+				</span>
+			} else {
+				<span class="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Needs adding</span>
+			}
+		</td>
+		<td class="px-3">
+			if s.Active {
+				Active
+			} else {
+				Off roster
+			}
+		</td>
+		<td class="px-2 text-right">
+			<button
+				type="button"
+				hx-get={ fmt.Sprintf("/admin/students/%d/edit", s.ID) }
+				hx-target="closest tr"
+				hx-swap="outerHTML"
+				aria-label={ "Edit " + s.Name() }
+				class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring outline-none"
+			>
+				@icon.Pencil(icon.Props{Size: 15})
+			</button>
+		</td>
+	</tr>
+}
+
+templ StudentEditRow(s store.Student) {
+	<tr id={ rowID(s) } class="bg-muted/40" data-cancel={ fmt.Sprintf("/admin/students/%d/row", s.ID) }>
+		<td class="px-2 py-2">
+			<div class="grid grid-cols-2 gap-2">
+				<input name="first" value={ s.FirstName } aria-label="First name" required autofocus class={ cellInput }/>
+				<input name="last" value={ s.LastName } aria-label="Last name" required class={ cellInput }/>
+			</div>
+		</td>
+		<td class="px-2 py-2">
+			@gradeSelect(s.Grade)
+		</td>
+		<td class="px-3 py-2">
+			<label class="flex items-center gap-2"><input type="checkbox" name="classroom" checked?={ s.InClassroom } class="size-4 accent-[var(--primary)]"/> Added</label>
+		</td>
+		<td class="px-3 py-2">
+			<label class="flex items-center gap-2"><input type="checkbox" name="active" checked?={ s.Active } class="size-4 accent-[var(--primary)]"/> Active</label>
+		</td>
+		<td class="px-2 py-2">
+			<div class="flex justify-end gap-1">
+				<button
+					type="button"
+					hx-post={ fmt.Sprintf("/admin/students/%d", s.ID) }
+					hx-include="closest tr"
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					aria-label="Save"
+					class="inline-flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring outline-none"
+				>
+					@icon.Check(icon.Props{Size: 15})
+				</button>
+				<button
+					type="button"
+					hx-get={ fmt.Sprintf("/admin/students/%d/row", s.ID) }
+					hx-target="closest tr"
+					hx-swap="outerHTML"
+					aria-label="Cancel"
+					class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring outline-none"
+				>
+					@icon.X(icon.Props{Size: 15})
+				</button>
+			</div>
+		</td>
+	</tr>
+}
+
+templ newStudentRow() {
+	<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_6rem] gap-2">
+		<input name="new_first" placeholder="First" aria-label="First name" autocomplete="off" class={ inputClass }/>
+		<input name="new_last" placeholder="Last" aria-label="Last name" autocomplete="off" class={ inputClass }/>
+		<select name="new_grade" aria-label="Grade" class={ inputClass }>
+			<option value="">Grade</option>
+			for g := 5; g <= 12; g++ {
+				<option value={ fmt.Sprint(g) }>{ fmt.Sprint(g) }</option>
+			}
+		</select>
+	</div>
+}
+
+templ classroomReminder(need []store.Student, back string) {
+	if len(need) > 0 {
+		<div data-classroom-list class="mb-6 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3">
+			<div class="mb-2 flex items-center gap-2 text-sm font-semibold">
+				@icon.GraduationCap(icon.Props{Size: 16})
+				Add to Google Classroom
+			</div>
+			<ul class="space-y-1.5">
+				for _, s := range need {
+					<li class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-classroom-item>
+						<span class="font-medium">{ s.Name() }</span>
+						if s.Grade > 0 {
+							<span class="text-muted-foreground">{ fmt.Sprintf("grade %d", s.Grade) }</span>
+						}
+						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/students/%d/classroom", s.ID)) } hx-post={ fmt.Sprintf("/admin/students/%d/classroom", s.ID) } hx-target="closest li" hx-swap="delete">
+							<input type="hidden" name="back" value={ back }/>
+							@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeXs, Type: button.TypeSubmit}) {
+								@icon.Check(icon.Props{Size: 12})
+								Added
+							}
+						</form>
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}

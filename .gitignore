@@ -6,3 +6,4 @@ bin/
 *.db-wal
 tmp/
 content/
+club.db*
